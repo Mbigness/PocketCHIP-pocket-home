@@ -123,8 +123,27 @@ LauncherComponent::LauncherComponent(const var &configJson)
   addAndMakeVisible(batteryLabel);
   batteryLabel->setFont(Font(15.f));
   
+  String value = (configJson["background"]).toString();
+  
   bgColor = Colour(0x000000);
-  bgImage = createImageFromFile(assetFile("mainBackground.png"));
+  if(value.length()==6 && value.containsOnly("0123456789ABCDEF")){
+    value = "FF" + value;
+    unsigned int x;   
+    std::stringstream ss;
+    ss << std::hex << value;
+    ss >> x;
+    printf("X = %x\n", x);
+    bgColor = Colour(x);
+    hasImg = false;
+  }
+  else{
+    if(value == "") value = "mainBackground.png";
+    File f;
+    if(value[0]=='~' || value[0]=='/') f = File(value);
+    else f = assetFile(value);
+    bgImage = createImageFromFile(f);
+    hasImg = true;
+  }
   pageStack = new PageStackComponent();
   addAndMakeVisible(pageStack);
 
@@ -255,6 +274,14 @@ LauncherComponent::LauncherComponent(const var &configJson)
   wifiIconTimer.launcherComponent = this;
   wifiIconTimer.startTimer(2000);
   wifiIconTimer.timerCallback();
+  
+  /* Normal/Delete mode */
+  modeButton = new SwitchComponent;
+  modeButton->setName("Switch");
+  modeButton->addListener(this);
+  modeLabel = new Label("mode", "Normal mode");
+  /*addAndMakeVisible(modeLabel);
+  addAndMakeVisible(modeButton);*/
 }
 
 LauncherComponent::~LauncherComponent() {
@@ -265,7 +292,7 @@ LauncherComponent::~LauncherComponent() {
 void LauncherComponent::paint(Graphics &g) {
   auto bounds = getLocalBounds();
   g.fillAll(bgColor);
-  g.drawImage(bgImage,bounds.getX(), bounds.getY(), bounds.getWidth(), bounds.getHeight(), 0, 0, bgImage.getWidth(), bgImage.getHeight(), false);
+  if(hasImg) g.drawImage(bgImage,bounds.getX(), bounds.getY(), bounds.getWidth(), bounds.getHeight(), 0, 0, bgImage.getWidth(), bgImage.getHeight(), false);
 }
 
 void LauncherComponent::resized() {
@@ -281,7 +308,9 @@ void LauncherComponent::resized() {
   launchSpinner->setBounds(bounds.getX(), bounds.getY(), bounds.getWidth(), bounds.getHeight());
   
   batteryLabel->setBounds(bounds.getX()+40, bounds.getY(), 50, 50);
-
+  
+//   modeLabel->setBounds(bounds.getX()+320, bounds.getY(), 100, 50);
+//   modeButton->setBounds(bounds.getX()+395, bounds.getY()+16, 40, 20);
   // init
   if (!resize) {
     resize = true;
@@ -307,6 +336,14 @@ void LauncherComponent::openAppLibrary() {
 
 void LauncherComponent::buttonClicked(Button *button) {
   auto currentPage = pageStack->getCurrentPage();
+  
+  if (button->getName() == "Switch"){
+      if(!modeButton->getToggleState())
+	modeLabel->setText("Normal mode",dontSendNotification);
+      else modeLabel->setText("Delete mode",dontSendNotification);
+      return;
+  }
+  
   if ((!currentPage || currentPage->getName() != button->getName()) &&
       pagesByName.contains(button->getName())) {
     auto page = pagesByName[button->getName()];
