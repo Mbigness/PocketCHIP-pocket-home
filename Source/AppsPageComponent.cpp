@@ -48,7 +48,7 @@ AppListComponent::AppListComponent() :
 }
 AppListComponent::~AppListComponent() {}
 
-DrawableButton *AppListComponent::createAndOwnIcon(const String &name, const String &iconPath, const String &shell) {
+AppIconButton* AppListComponent::createAndOwnIcon(const String &name, const String &iconPath, const String &shell) {
   auto image = createImageFromFile(assetFile(iconPath));
   auto drawable = new DrawableImage();
   drawable->setImage(image);
@@ -63,6 +63,7 @@ DrawableButton *AppListComponent::createAndOwnIcon(const String &name, const Str
 
 void AppListComponent::resized() {
   auto b = getLocalBounds();
+  int btnHeight = PokeLookAndFeel::getButtonHeight();
   
   prevPageBtn->setSize(btnHeight, btnHeight);
   nextPageBtn->setSize(btnHeight, btnHeight);
@@ -92,14 +93,60 @@ void AppListComponent::checkShowPageNav() {
   }
 }
 
+// FIXME: these button handlers not being scopeable to specific button types or instances
+// is pretty annoying. It means we have to check instances and types at runtime to see what
+// button is changing. See also buttonClicked()
+void AppListComponent::buttonStateChanged(Button* btn) {
+  auto appBtn = dynamic_cast<AppIconButton*>(btn);
+  if (!appBtn) { return; }
+  
+  auto appIcon = static_cast<DrawableImage*>(appBtn->getCurrentImage());
+  auto& buttonPopup = getMainButtonPopup();
+  auto& parentComp = getMainContentComponent();
+  
+  constexpr auto scale = 1.3;
+  
+  // show floating button popup if we're holding downstate and not showing the popup
+  if (btn->isMouseButtonDown() &&
+      btn->isMouseOver() &&
+      !buttonPopup.isVisible()) {
+    // copy application icon bounds in screen space
+    auto boundsNext = appIcon->getScreenBounds();
+    auto boundsCentre = boundsNext.getCentre();
+    
+    // scale and recenter
+    boundsNext.setSize(boundsNext.getWidth()*scale, boundsNext.getHeight()*scale);
+    boundsNext.setCentre(boundsCentre);
+    
+    // translate back to space local to popup parent (local bounds)
+    auto parentPos = parentComp.getScreenPosition();
+    boundsNext.setPosition(boundsNext.getPosition() - parentPos);
+    
+    // show popup icon, hide real button beneath
+    buttonPopup.setImage(appIcon->getImage());
+    buttonPopup.setBounds(boundsNext);
+    buttonPopup.setVisible(true);
+    appIcon->setVisible(false);
+    // set icon text dim
+    auto dimWhite = Colour(0x99ffffff);
+    appBtn->setColour(DrawableButton::textColourId, dimWhite);
+  }
+  // set UI back to default if we can see the popup, but aren't holding the button down
+  else if (btn->isVisible()) {
+    appIcon->setVisible(true);
+    appBtn->setColour(DrawableButton::textColourId, getLookAndFeel().findColour(DrawableButton::textColourId));
+    buttonPopup.setVisible(false);
+  }
+}
+
 void AppListComponent::addAndOwnIcon(const String &name, Component *icon) {
   gridIcons.add(icon);
   grid->addItem(icon);
   ((Button*)icon)->addListener(this);
 }
 
-Array<DrawableButton *> AppListComponent::createIconsFromJsonArray(const var &json) {
-  Array<DrawableButton *> buttons;
+Array<AppIconButton*> AppListComponent::createIconsFromJsonArray(const var &json) {
+  Array<AppIconButton*> buttons;
   if (json.isArray()) {
     for (const auto &item : *json.getArray()) {
       auto name = item["name"];
@@ -130,14 +177,14 @@ AppsPageComponent::AppsPageComponent(LauncherComponent* launcherComponent) :
 
 AppsPageComponent::~AppsPageComponent() {}
 
-Array<DrawableButton *> AppsPageComponent::createIconsFromJsonArray(const var &json) {
+Array<AppIconButton*> AppsPageComponent::createIconsFromJsonArray(const var &json) {
   auto buttons = AppListComponent::createIconsFromJsonArray(json);
   
-  //// hard coded "virtual" application. Cannot be removed.
-  //appsLibraryBtn = createAndOwnIcon("App Get", "appIcons/update.png", String::empty);
-  //buttons.add(appsLibraryBtn);
-  
+  // hard coded "virtual" application. Cannot be removed.
+  appLibraryBtn = createAndOwnIcon("App Get", "appIcons/install.png", String::empty);
+  buttons.add(appLibraryBtn);
   checkShowPageNav();
+  
   return buttons;
 }
 
@@ -198,10 +245,6 @@ void AppsPageComponent::startOrFocusApp(AppIconButton* appButton) {
   
 };
 
-void AppsPageComponent::openAppsLibrary() {
-  launcherComponent->showAppsLibrary();
-}
-
 void AppsPageComponent::checkRunningApps() {
   Array<int> needsRemove{};
   
@@ -225,43 +268,6 @@ void AppsPageComponent::checkRunningApps() {
   }
 };
 
-void AppsPageComponent::buttonStateChanged(Button* btn) {
-  auto appBtn = (AppIconButton*)btn;
-  auto appIcon = (DrawableImage*)appBtn->getCurrentImage();
-  auto buttonPopup = launcherComponent->focusButtonPopup.get();
-  constexpr auto scale = 1.3;
-
-  // show floating button popup if we're holding downstate and not showing the popup
-  if (btn->isMouseButtonDown() &&
-      btn->isMouseOver() &&
-      !buttonPopup->isVisible()) {
-    // copy application icon bounds in screen space
-    auto boundsNext = appIcon->getScreenBounds();
-    auto boundsCentre = boundsNext.getCentre();
-    
-    // scale and recenter
-    boundsNext.setSize(boundsNext.getWidth()*scale, boundsNext.getHeight()*scale);
-    boundsNext.setCentre(boundsCentre);
-    
-    // translate back to space local to popup parent (local bounds)
-    auto parentPos = launcherComponent->getScreenPosition();
-    boundsNext.setPosition(boundsNext.getPosition() - parentPos);
-    
-    // show popup icon, hide real button beneath
-    buttonPopup->setImage(appIcon->getImage());
-    buttonPopup->setBounds(boundsNext);
-    buttonPopup->setVisible(true);
-    appIcon->setVisible(false);
-    appBtn->setColour(DrawableButton::textColourId, Colours::transparentWhite);
-  }
-  // set UI back to default if we can see the popup, but aren't holding the button down
-  else if (btn->isVisible()) {
-    appIcon->setVisible(true);
-    appBtn->setColour(DrawableButton::textColourId, getLookAndFeel().findColour(DrawableButton::textColourId));
-    buttonPopup->setVisible(false);
-  }
-}
-
 void AppsPageComponent::buttonClicked(Button *button) {
   if (button == prevPageBtn) {
     grid->showPrevPage();
@@ -271,8 +277,8 @@ void AppsPageComponent::buttonClicked(Button *button) {
     grid->showNextPage();
     checkShowPageNav();
   }
-  else if (button == appsLibraryBtn) {
-    openAppsLibrary();
+  else if (button == appLibraryBtn) {
+    launcherComponent->openAppLibrary();
   }
   else {
     auto appButton = (AppIconButton*)button;

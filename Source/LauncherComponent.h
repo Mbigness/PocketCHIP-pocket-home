@@ -7,7 +7,6 @@
 #include "BatteryMonitor.h"
 
 class LauncherComponent;
-class LibraryPageComponent;
 class AppsPageComponent;
 
 class LaunchSpinnerTimer : public Timer {
@@ -42,7 +41,6 @@ public:
     ScopedPointer<LauncherBarComponent> botButtons;
     ScopedPointer<LauncherBarComponent> topButtons;
     ScopedPointer<ImageComponent> launchSpinner;
-    ScopedPointer<ImageComponent> focusButtonPopup;
   
     Array<Image> launchSpinnerImages;
     Array<Image> batteryIconImages;
@@ -70,9 +68,9 @@ public:
     void paint(Graphics &) override;
     void resized() override;
   
-    void showAppsLibrary();
     void showLaunchSpinner();
     void hideLaunchSpinner();
+    void openAppLibrary();
   
 private:
     Colour bgColor;

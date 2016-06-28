@@ -3,6 +3,7 @@
 #include "LibraryPageComponent.h"
 #include "SettingsPageComponent.h"
 #include "PowerPageComponent.h"
+#include "PokeLookAndFeel.h"
 
 #include "Main.h"
 #include "Utils.h"
@@ -60,7 +61,7 @@ void BatteryIconTimer::timerCallback() {
 
           }
           
-          button->setImages(false, false, true,
+          button->setImages(false, true, true,
                        batteryImg, 1.0f, Colours::transparentWhite, // normal
                        batteryImg, 1.0f, Colours::transparentWhite, // over
                        batteryImg, 0.5f, Colours::transparentWhite, // down
@@ -101,7 +102,7 @@ void WifiIconTimer::timerCallback() {
         wifiIcon = launcherComponent->wifiIconImages.getLast();
       }
       
-      button->setImages(false, false, true,
+      button->setImages(false, true, true,
                         wifiIcon, 1.0f, Colours::transparentWhite, // normal
                         wifiIcon, 1.0f, Colours::transparentWhite, // over
                         wifiIcon, 0.5f, Colours::transparentWhite, // down
@@ -154,10 +155,6 @@ LauncherComponent::LauncherComponent(const var &configJson)
   launchSpinner->setInterceptsMouseClicks(false, false);
   addChildComponent(launchSpinner);
   
-  focusButtonPopup = new ImageComponent("Focus Button Popup");
-  focusButtonPopup->setInterceptsMouseClicks(false, false);
-  addChildComponent(focusButtonPopup);
-  
   // Settings page
   auto settingsPage = new SettingsPageComponent();
   settingsPage->setName("Settings");
@@ -176,11 +173,11 @@ LauncherComponent::LauncherComponent(const var &configJson)
   pages.add(appsPage);
   pagesByName.set("Apps", appsPage);
   
-  // Apps library
-  auto appsLibrary = new LibraryPageComponent();
-  appsLibrary->setName("AppsLibrary");
-  pages.add(appsLibrary);
-  pagesByName.set("AppsLibrary", appsLibrary);
+  // AppGet page
+  auto appLibrary = new LibraryPageComponent();
+  appLibrary->setName("AppLibrary");
+  pages.add(appLibrary);
+  pagesByName.set("AppLibrary", appLibrary);
   
   // Read config for apps and corner locations
   auto pagesData = configJson["pages"].getArray();
@@ -189,12 +186,29 @@ LauncherComponent::LauncherComponent(const var &configJson)
       auto name = page["name"].toString();
       if (name == "Apps") {
         
+        // add all items from config to our launch list
         const auto& appButtons = appsPage->createIconsFromJsonArray(page["items"]);
         for (auto button : appButtons) { button->setWantsKeyboardFocus(false); }
-        appsLibrary->createIconsFromJsonArray(page["items"]);
-        auto buttonsData = *(page["cornerButtons"].getArray());
         
+        // add all items from config to our install list
+        auto appsFile = assetFile("ntc-apps.json");
+        if (appsFile.exists()) {
+          auto appsJson = JSON::parse(appsFile);
+          if (appsJson) {
+            const auto& appLibBtns = appLibrary->createIconsFromJsonArray(appsJson);
+            for (auto button : appLibBtns) { button->setWantsKeyboardFocus(false); }
+          }
+          else {
+            std::cerr << "Could not parse installable applications list: " << appsFile.getFullPathName() << std::endl;
+          }
+        }
+        else {
+          std::cerr << "Missing installable applications list: " << appsFile.getFullPathName() << std::endl;
+        }
+        
+        // add corner buttons
         // FIXME: is there a better way to slice juce Array<var> ?
+        auto buttonsData = *(page["cornerButtons"].getArray());
         Array<var> topData{};
         Array<var> botData{};
         topData.add(buttonsData[0]);
@@ -246,7 +260,7 @@ void LauncherComponent::paint(Graphics &g) {
 
 void LauncherComponent::resized() {
   auto bounds = getLocalBounds();
-  int barSize = 50;
+  int barSize = PokeLookAndFeel::getButtonHeight();
   
   topButtons->setBounds(bounds.getX(), bounds.getY(), bounds.getWidth(),
                         barSize);
@@ -254,7 +268,7 @@ void LauncherComponent::resized() {
                              barSize);
   pageStack->setBounds(bounds.getX() + barSize, bounds.getY(), bounds.getWidth() - 2*barSize,
                        bounds.getHeight());
-  launchSpinner->setBounds(0, 0, bounds.getWidth(), bounds.getHeight());
+  launchSpinner->setBounds(bounds.getX(), bounds.getY(), bounds.getWidth(), bounds.getHeight());
 
   // init
   if (!resize) {
@@ -275,8 +289,8 @@ void LauncherComponent::hideLaunchSpinner() {
   launchSpinner->setVisible(false);
 }
 
-void LauncherComponent::showAppsLibrary() {
-  getMainStack().pushPage(pagesByName["AppsLibrary"], PageStackComponent::kTransitionTranslateHorizontalLeft);
+void LauncherComponent::openAppLibrary() {
+  getMainStack().pushPage(pagesByName["AppLibrary"], PageStackComponent::kTransitionTranslateHorizontalLeft);
 }
 
 void LauncherComponent::buttonClicked(Button *button) {
